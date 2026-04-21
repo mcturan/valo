@@ -1,0 +1,2 @@
+# valo
+Varlık Operasyonları
