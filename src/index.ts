@@ -14,17 +14,58 @@ startHardwareDaemon(8080);
 
 // USERS
 app.get('/users', async (req, res) => {
-  const result = await pool.query('SELECT id, full_name, role, nfc_card_id, is_active FROM users');
+  const result = await pool.query('SELECT id, full_name, username, role, nfc_card_id, is_active, nfc_enabled FROM users ORDER BY created_at DESC');
   res.json(result.rows);
 });
 
 app.post('/users', async (req, res) => {
-  const { full_name, role, nfc_card_id, password } = req.body;
-  const result = await pool.query(
-    'INSERT INTO users (full_name, role, nfc_card_id, password) VALUES ($1, $2, $3, $4) RETURNING id',
-    [full_name, role, nfc_card_id, password]
-  );
-  res.status(201).json(result.rows[0]);
+  const { full_name, username, role, nfc_card_id, password, nfc_enabled } = req.body;
+  try {
+    const result = await pool.query(
+      'INSERT INTO users (full_name, username, role, nfc_card_id, password, nfc_enabled) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+      [full_name, username, role, nfc_card_id, password, nfc_enabled || false]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.put('/users/:id/nfc', async (req, res) => {
+  const { id } = req.params;
+  const { nfc_enabled } = req.body;
+  try {
+    await pool.query('UPDATE users SET nfc_enabled = $1 WHERE id = $2', [nfc_enabled, id]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// LOGIN
+app.post('/login', async (req, res) => {
+  const { username, password, nfc_scanned } = req.body;
+  try {
+    const result = await pool.query('SELECT id, full_name, username, role, nfc_enabled, nfc_card_id FROM users WHERE username = $1 AND password = $2 AND is_active = TRUE', [username, password]);
+    
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Kullanıcı adı veya şifre hatalı.' });
+    }
+
+    const user = result.rows[0];
+
+    if (user.nfc_enabled && !nfc_scanned) {
+      return res.status(403).json({ error: 'NFC_REQUIRED', message: 'Bu hesap için NFC kart zorunludur. Lütfen kartınızı okutunuz.' });
+    }
+    // Simple mock check for NFC ID match (in reality, hardware daemon handles this)
+    if (user.nfc_enabled && nfc_scanned && nfc_scanned !== user.nfc_card_id) {
+       return res.status(403).json({ error: 'NFC_INVALID', message: 'Okutulan kart bu kullanıcıya ait değil.' });
+    }
+
+    res.json(user);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // CUSTOMERS
