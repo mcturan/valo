@@ -98,6 +98,17 @@ app.post('/alarms', async (req, res) => {
   res.json({ success: true });
 });
 
+// --- RATES ---
+app.get('/rates', async (req, res) => {
+  const result = await pool.query(`
+    SELECT DISTINCT ON (base_currency, target_currency) 
+           base_currency, target_currency, rate_multiplier, created_at
+    FROM exchange_rates
+    ORDER BY base_currency, target_currency, created_at DESC
+  `);
+  res.json(result.rows);
+});
+
 // --- SYSTEM BALANCES ---
 app.get('/system/balances', async (req, res) => {
   const result = await pool.query(`
@@ -128,10 +139,18 @@ app.get('/transactions', async (req, res) => {
     SELECT t.id, t.created_at, t.type, t.status,
            u.full_name as user_name, c.full_name as customer_name,
            (SELECT amount FROM ledger_entries WHERE transaction_id = t.id AND entry_type = 'DEBIT' LIMIT 1) as debit_amount,
-           (SELECT a.currency_code FROM accounts a JOIN ledger_entries le ON a.id = le.account_id WHERE le.transaction_id = t.id AND le.entry_type = 'DEBIT' LIMIT 1) as currency
+           (SELECT a.currency_code FROM accounts a JOIN ledger_entries le ON a.id = le.account_id WHERE le.transaction_id = t.id AND le.entry_type = 'DEBIT' LIMIT 1) as currency,
+           (SELECT amount FROM ledger_entries WHERE transaction_id = t.id AND entry_type = 'CREDIT' LIMIT 1) as credit_amount,
+           (SELECT a.currency_code FROM accounts a JOIN ledger_entries le ON a.id = le.account_id WHERE le.transaction_id = t.id AND le.entry_type = 'CREDIT' LIMIT 1) as credit_currency
     FROM transactions t
     LEFT JOIN users u ON t.user_id = u.id
-    LEFT JOIN customers c ON (t.banknote_serials->>'customer_id')::uuid = c.id
+    LEFT JOIN customers c ON (
+      CASE 
+        WHEN (t.banknote_serials->>'customer_id') IS NOT NULL THEN (t.banknote_serials->>'customer_id')::uuid
+        WHEN t.customer_identity_hash ~ '^[0-9a-fA-F-]{36}$' THEN t.customer_identity_hash::uuid
+        ELSE NULL
+      END = c.id
+    )
     WHERE t.created_at BETWEEN $1 AND $2
     ORDER BY t.created_at DESC
   `, [start || '1970-01-01', end || '2100-01-01']);
