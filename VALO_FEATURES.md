@@ -1,20 +1,19 @@
-# VALO PROJESİ - GÜNCEL ÖZELLİKLER VE YOL HARİTASI
+# VALO PROJESİ - v1.6 DENETİM & OTOMASYON PLANI
 
-## 🟢 TAMAMLANAN VE SABİTLENENLER (AUDIT GEÇER)
-- [x] **Zero-Float & BIGINT:** Tüm paralar kuruş bazında hatasız tutuluyor.
-- [x] **WORM Database:** PostgreSQL'de silme/güncelleme yasak, sadece log tutuluyor.
-- [x] **Vanta/Net Background:** Topology/Network esintili, akıcı ve profesyonel Canvas arka planı.
-- [x] **Canlı Piyasa Akışı:** Sol barda her 2.5 saniyede bir dalgalanan, yeşil/kırmızı yanan dinamik kurlar.
-- [x] **Full Admin Paneli:** Personel, Alarm ve Sistem Ayarları sekmeleri tam fonksiyonel.
-- [x] **Gelişmiş İşlemler & Cari:** Detaylı filtreleme (Tarih, Personel, Para Birimi) ve Müşteri Cari Ekstre sayfaları.
-- [x] **Role-Based Login:** `godmin` (Master), `admin`, `user` yetki ayrımı ve güvenli çıkış.
-- [x] **Hava Durumu:** İstanbul/Fatih için 3 aşamalı (Anlık/Bugün/Yarın) wttr.in entegrasyonu.
+## 🟢 TAMAMLANANLAR (SABİT)
+- [x] **Topology Arka Plan & Canlı Kurlar:** Dinamik terminal ruhu.
+- [x] **KYC Sert Alarm:** 5000+ birim uyarısı ve Telegram tetiği.
+- [x] **Kupür Giriş Sistemi:** Banknot dökümü modülü.
+- [x] **Kasa Widget:** Personel nakit mevcudu takibi.
 
-## 🟡 ŞİMDİ YAPILANLAR (KAYIT VE YÜKLEME)
-- [x] **Git Snapshot:** Mevcut stabil halin tüm konfigürasyonuyla birlikte commit edilmesi.
+## 🟡 ŞİMDİ YAPILIYOR (GAZA BASILDI - PROFESYONEL AUDIT)
+- [ ] **Transaction Persistence:** İşlemlerin gerçekten DB'ye yazılması ve kasa güncelleme.
+- [ ] **Parity Engine:** USD/EUR gibi çapraz döviz hesaplama altyapısı.
+- [ ] **Printer Settings:** Fiş başlığı, alt not ve termal kağıt tipi yönetimi.
+- [ ] **Rate Settings:** Global kur makas (spread) ve birim aktif/pasif ayarları.
+- [ ] **Input Masking:** TC No (11 hane) ve Tel (+90...) zorunlu formatlama.
 
-## 🔴 GELECEK FAZLAR (ROADMAP)
-1. **OCR Kimlik Okuma:** Yüklenen fotoğraftan isim/no çekme.
-2. **Telegram Bot:** Kritik alarm ve raporları Telegram'dan otomatik atma.
-3. **AI Analiz:** Ollama ile kara para (smurfing) ve arbitraj tespiti.
-4. **TINC Sync:** Verilerin bulut katmanına itilmesi.
+## 🔴 SON FAZ (FINALE)
+- [ ] **OCR Real Integration:** Pasaport/Kimlik görselinden veri ayrıştırma.
+- [ ] **AI Smurfing Detection:** Ollama ile risk analizi.
+- [ ] **Cloud Sync:** TINC şifreli yedekleme.
