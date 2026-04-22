@@ -43,6 +43,23 @@ export async function createFinancialTransaction(data: TransactionData) {
   try {
     await client.query('BEGIN');
 
+    // 1. Balance Check for PERSONAL accounts
+    for (const entry of entries) {
+      if (entry.entry_type === 'DEBIT') {
+        const accRes = await client.query('SELECT account_type FROM accounts WHERE id = $1', [entry.account_id]);
+        if (accRes.rows[0]?.account_type === 'PERSONAL') {
+          const balRes = await client.query(`
+            SELECT SUM(CASE WHEN entry_type = 'DEBIT' THEN amount ELSE -amount END) as balance 
+            FROM ledger_entries WHERE account_id = $1
+          `, [entry.account_id]);
+          const currentBalance = parseInt(balRes.rows[0].balance || '0');
+          if (currentBalance < entry.amount) {
+            throw new Error(`Yetersiz Bakiye: Kasada ${entry.currency_code} biriminde yeterli tutar yok. (Mevcut: ${currentBalance/100}, İstenen: ${entry.amount/100})`);
+          }
+        }
+      }
+    }
+
     // 2. Create Transaction Header
     const txResult = await client.query(
       `INSERT INTO transactions (user_id, customer_id, type, status, auth_used, applied_exchange_rate_id, banknote_serials)

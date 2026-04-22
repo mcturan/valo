@@ -10,12 +10,14 @@
 - [x] **Printer Settings:** Ağ yazıcısı (IP/Port) ve fiş şablon yönetimi.
 - [x] **Rate Settings:** Global kur makas (spread) ve dinamik kur senkronizasyonu.
 - [x] **PDF Export:** İşlem ve müşteri listeleri için çıktı alma desteği.
+- [x] **OCR Real Integration:** Pasaport/Kimlik görselinden veri ayrıştırma (Tesseract.js).
+- [x] **AI Smurfing Detection:** Ollama/Risk motoru ile şüpheli işlem analizi.
+- [x] **Cloud Sync:** TINC şifreli yedekleme (Simulation).
+- [x] **Hardware Final:** WebSocket donanım verisi ile otomatik tutar eşleme.
 
 ## 🟡 ŞİMDİ YAPILIYOR (GAZA BASILDI - PROFESYONEL AUDIT)
-- [ ] **Input Masking:** TC No (11 hane) ve Tel (+90...) zorunlu formatlama.
-- [ ] **OCR Real Integration:** Pasaport/Kimlik görselinden veri ayrıştırma.
+- [ ] **Mobile Optimization:** Tablet/Mobil görünümlerin iyileştirilmesi.
 
 ## 🔴 SON FAZ (FINALE)
-- [ ] **OCR Real Integration:** Pasaport/Kimlik görselinden veri ayrıştırma.
-- [ ] **AI Smurfing Detection:** Ollama ile risk analizi.
+- [ ] **AI Smurfing Detection:** Ollama ile derin risk analizi.
 - [ ] **Cloud Sync:** TINC şifreli yedekleme.

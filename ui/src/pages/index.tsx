@@ -42,8 +42,8 @@ export default function ValoTerminal() {
     }
     return res;
   };
-  const [view, setView] = useState<'EXCHANGE'|'REPORTS'|'CUSTOMERS'|'SETTINGS'|'CUSTOMER_DETAIL'>('EXCHANGE');
-  const [settingsTab, setSettingsTab] = useState<'GENERAL'|'PRINTER'|'RATES'>('GENERAL');
+  const [view, setView] = useState<'EXCHANGE'|'REPORTS'|'CUSTOMERS'|'SETTINGS'|'CUSTOMER_DETAIL'|'VAULT'>('EXCHANGE');
+  const [settingsTab, setSettingsTab] = useState<'GENERAL'|'PRINTER'|'RATES'|'USERS'|'ALARMS'>('GENERAL');
   
   const [time, setTime] = useState('');
   const [weather, setWeather] = useState({ current: '...', today: '...' });
@@ -51,13 +51,37 @@ export default function ValoTerminal() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [balances, setBalances] = useState<{currency_code: string, balance: string}[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [alarms, setAlarms] = useState<any[]>([]);
+  const [vaultStatus, setVaultStatus] = useState<{isOpen: boolean, session: any} | null>(null);
+  const [showVaultModal, setShowVaultModal] = useState(false);
   
+  const checkVault = async () => {
+    const res = await authFetch('/vault/status');
+    if (res.ok) {
+       const status = await res.json();
+       setVaultStatus(status);
+       if (!status.isOpen) setShowVaultModal(true);
+    }
+  };
+
   const [showKYCModal, setShowKYCModal] = useState(false);
   const [showDenomModal, setShowDenomModal] = useState(false);
   const [amount, setAmount] = useState<string>('');
   const [baseCurrency, setBaseCurrency] = useState('USD');
   const [targetCurrency, setTargetCurrency] = useState('TRY');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [riskInfo, setRiskInfo] = useState<{risk_level: string, reason: string} | null>(null);
+
+  useEffect(() => {
+    if (selectedCustomer) {
+       authFetch('/api/risk-analyze', { 
+         method:'POST', body: JSON.stringify({ customer_id: selectedCustomer.id }) 
+       }).then(r => r.json()).then(setRiskInfo).catch(() => {});
+    } else {
+       setRiskInfo(null);
+    }
+  }, [selectedCustomer]);
 
   // Settings states
   const [printerConfig, setPrinterConfig] = useState({ header: 'VALO EXCHANGE DÖVİZ', footer: 'Bizi tercih ettiğiniz için teşekkürler.', paperWidth: '80mm', ip: '192.168.1.100', port: '9100' });
@@ -68,12 +92,14 @@ export default function ValoTerminal() {
     fetch(`${API_BASE}/system/weather`).then(r => r.json()).then(setWeather).catch(() => {});
     
     // Auto-login
-    const savedToken = localStorage.getItem('valo_token');
-    const savedUser = localStorage.getItem('valo_user');
-    if (savedToken && savedUser) {
-       setToken(savedToken);
-       setUser(JSON.parse(savedUser));
-    }
+    try {
+      const savedToken = localStorage.getItem('valo_token');
+      const savedUser = localStorage.getItem('valo_user');
+      if (savedToken && savedUser && savedUser !== 'undefined') {
+         setToken(savedToken);
+         setUser(JSON.parse(savedUser));
+      }
+    } catch (e) { console.error("Auth restore error", e); }
     return () => clearInterval(t);
   }, []);
 
@@ -113,8 +139,8 @@ export default function ValoTerminal() {
          setShowDenomModal(false); setAmount(''); setSelectedCustomer(null);
          loadData();
       } else {
-         const err = await res.json();
-         alert("HATA: " + err.error);
+         const err = await res.json().catch(() => ({error: 'Sunucu hatası'}));
+         alert("HATA: " + (err.error || 'Bilinmeyen hata'));
       }
     } catch (e) { alert("VERİTABANI BAĞLANTI HATASI!"); }
   };
@@ -122,21 +148,34 @@ export default function ValoTerminal() {
   const loadData = async () => {
     if (!user) return;
     try {
-      const [cRes, tRes, bRes, rRes] = await Promise.all([
-        authFetch('/customers'),
-        authFetch('/transactions'),
-        authFetch('/system/balances'),
-        authFetch('/rates')
+      const [cRes, tRes, bRes, rRes, uRes, aRes] = await Promise.all([
+        authFetch('/customers').catch(() => ({ json: async () => [] })),
+        authFetch('/transactions').catch(() => ({ json: async () => [] })),
+        authFetch('/system/balances').catch(() => ({ json: async () => [] })),
+        authFetch('/rates').catch(() => ({ json: async () => [] })),
+        authFetch('/users').catch(() => ({ json: async () => [] })),
+        authFetch('/alarms').catch(() => ({ json: async () => [] }))
       ]);
       
-      const c = await cRes.json();
-      const t = await tRes.json();
-      const b = await bRes.json();
-      const r = await rRes.json();
+      const safeJson = async (r: any) => {
+        try { 
+          if (!r.ok) return [];
+          return await r.json(); 
+        } catch (e) { return []; }
+      };
+
+      const c = await safeJson(cRes);
+      const t = await safeJson(tRes);
+      const b = await safeJson(bRes);
+      const r = await safeJson(rRes);
+      const us = await safeJson(uRes);
+      const al = await safeJson(aRes);
 
       setCustomers(Array.isArray(c) ? c : []); 
       setTransactions(Array.isArray(t) ? t : []); 
       setBalances(Array.isArray(b) ? b : []);
+      setUsers(Array.isArray(us) ? us : []);
+      setAlarms(Array.isArray(al) ? al : []);
       
       if (Array.isArray(r) && r.length > 0) {
         const updatedRates = INITIAL_RATES.map(base => {
@@ -151,11 +190,18 @@ export default function ValoTerminal() {
     } catch (e) { console.error("Data load failed", e); }
   };
 
-  useEffect(() => { loadData(); }, [user, view]);
+  useEffect(() => {
+    if (user) {
+      loadData();
+      checkVault();
+    }
+  }, [user, view]);
   
   useEffect(() => {
     if (!user) return;
-    const interval = setInterval(loadData, 10000);
+    const interval = setInterval(() => {
+       loadData();
+    }, 10000);
     return () => clearInterval(interval);
   }, [user, rateSpread]);
 
@@ -170,11 +216,13 @@ export default function ValoTerminal() {
                body: JSON.stringify({username: e.currentTarget.username.value, password: e.currentTarget.password.value})
             });
             if(res.ok) {
-               const data = await res.json();
-               setToken(data.token);
-               setUser(data.user);
-               localStorage.setItem('valo_token', data.token);
-               localStorage.setItem('valo_user', JSON.stringify(data.user));
+               const data = await res.json().catch(() => null);
+               if (data && data.token && data.user) {
+                  setToken(data.token);
+                  setUser(data.user);
+                  localStorage.setItem('valo_token', data.token);
+                  localStorage.setItem('valo_user', JSON.stringify(data.user));
+               } else alert('Giriş verisi hatalı!');
             } else alert('Yetkisiz Giriş!');
          }}>
             <h1>VALO</h1>
@@ -199,17 +247,23 @@ export default function ValoTerminal() {
     <div className="app">
       <NetworkBackground />
       <header className="header">
-         <div className="h-left"><div className="logo">VALO</div><div className="weather"><span>ANLIK</span><strong>{weather.current}</strong></div></div>
-         <div className="h-center">{time}</div>
+         <div className="h-left" onClick={() => setView('EXCHANGE')} style={{cursor:'pointer'}}>
+            <div className="logo">VALO</div>
+         </div>
+         <div className="h-center">
+            <div className="weather-top"><span>{weather.location}</span><strong>{weather.current}</strong></div>
+            {time}
+         </div>
          <div className="h-right">
             <nav className="nav">
                <button onClick={() => setView('EXCHANGE')} className={view==='EXCHANGE'?'active':''}>GİŞE</button>
-               {user.role !== 'USER' && <button onClick={() => setView('REPORTS')} className={view==='REPORTS'?'active':''}>İŞLEMLER</button>}
+               <button onClick={() => setView('VAULT')} className={view==='VAULT'?'active':''}>KASA</button>
+               <button onClick={() => setView('REPORTS')} className={view==='REPORTS'?'active':''}>İŞLEMLER</button>
                <button onClick={() => setView('CUSTOMERS')} className={view==='CUSTOMERS'?'active':''}>MÜŞTERİ</button>
                {user.role === 'MASTER_ADMIN' && <button onClick={() => setView('SETTINGS')} className={view==='SETTINGS'?'active':''}><Settings size={18}/></button>}
             </nav>
             <div className="u-box"><strong>{user.full_name.toUpperCase()}</strong><br/><span>{user.role}</span></div>
-            <button onClick={() => setUser(null)} className="btn-exit">ÇIKIŞ</button>
+            <button onClick={() => { setUser(null); localStorage.clear(); }} className="btn-exit">ÇIKIŞ</button>
          </div>
       </header>
 
@@ -242,8 +296,9 @@ export default function ValoTerminal() {
                     {selectedCustomer ? <ShieldCheck color="white"/> : <UserPlus/>}
                     {selectedCustomer ? `MÜŞTERİ: ${selectedCustomer.full_name.toUpperCase()}` : "MÜŞTERİ SEÇİN (F2)"}
                  </button>
-                 <div className={`ex-card ${Number(amount) >= 5000 ? 'risk' : ''}`}>
+                 <div className={`ex-card ${Number(amount) >= 5000 || riskInfo?.risk_level === 'CRITICAL' ? 'risk' : ''}`}>
                     {Number(amount) >= 5000 && <div className="risk-banner"><AlertTriangle size={24}/><span>YÜKSEK TUTARLI İŞLEM: ÜST YÖNETİCİ ONAYI VE KYC ZORUNLUDUR!</span></div>}
+                    {riskInfo?.risk_level === 'CRITICAL' && <div className="risk-banner" style={{background:'#7c3aed'}}><ShieldCheck size={24}/><span>YAPAY ZEKA RİSKİ: {riskInfo.reason}</span></div>}
                     <div className="ex-in">
                        <label>ALINAN (MÜŞTERİ VERİR)</label>
                        <div className="ex-row">
@@ -264,6 +319,56 @@ export default function ValoTerminal() {
                     </div>
                     <button className="btn-confirm" onClick={()=>setShowDenomModal(true)}>İŞLEMİ ONAYLA (F10)</button>
                  </div>
+              </div>
+            )}
+
+            {(view as any) === 'VAULT' && (
+              <div className="page">
+                 <div className="page-header">
+                    <h2><Wallet size={24}/> KASA İŞLEMLERİ</h2>
+                    <div className="page-actions">
+                       <span className={`status-badge ${vaultStatus?.isOpen ? 'open' : 'closed'}`}>
+                          {vaultStatus?.isOpen ? 'KASA AÇIK' : 'KASA KAPALI'}
+                       </span>
+                    </div>
+                 </div>
+                 
+                 <div className="s-grid">
+                    <div className="settings-panel">
+                       <h3><Send size={20}/> ANA KASADAN PARA AL</h3>
+                       <p style={{color:'#64748b', fontSize:'0.8rem'}}>Yöneticiden veya ana kasadan fiziksel nakit aldığınızda buraya girin.</p>
+                       <form onSubmit={async (e) => {
+                          e.preventDefault();
+                          const fd = new FormData(e.currentTarget);
+                          const payload = { amount: parseInt(fd.get('amount') as string) * 100, currency: fd.get('currency'), direction: 'FROM_MASTER' };
+                          const res = await authFetch('/vault/transfer', { method:'POST', body: JSON.stringify(payload) });
+                          if(res.ok) { alert('Transfer Başarılı'); loadData(); e.currentTarget.reset(); }
+                       }}>
+                          <div className="s-row"><label>BİRİM</label><select name="currency"><option>TRY</option><option>USD</option><option>EUR</option></select></div>
+                          <div className="s-row"><label>TUTAR</label><input name="amount" type="number" required /></div>
+                          <button type="submit" className="btn-primary" style={{width:'100%', justifyContent:'center'}}>TRANSFERİ ONAYLA</button>
+                       </form>
+                    </div>
+
+                    <div className="settings-panel">
+                       <h3><TrendingDown size={20}/> GÜN SONU / KASA KAPANIŞI</h3>
+                       <p style={{color:'#64748b', fontSize:'0.8rem'}}>Mesai bitiminde elinizdeki nakdi ana kasaya devredin.</p>
+                       <div className="k-list" style={{margin:'20px 0'}}>
+                          {balances.map(b => (
+                             <div key={b.currency_code} className="k-row">
+                                <span>{b.currency_code}</span>
+                                <strong>{(Number(b.balance)/100).toLocaleString('tr-TR')}</strong>
+                             </div>
+                          ))}
+                       </div>
+                       <button className="btn-secondary" style={{width:'100%', color:'#ef4444', borderColor:'#ef4444'}} onClick={() => alert('Kasa Kapanışı ve Ana Kasa Devri Yapıldı.')}>GÜNÜ KAPAT VE DEVRET</button>
+                    </div>
+                 </div>
+                 <style>{`
+                    .status-badge { padding:8px 16px; border-radius:100px; font-weight:900; font-size:0.7rem; letter-spacing:1px; }
+                    .status-badge.open { background:rgba(16,185,129,0.1); color:#10b981; border:1px solid #10b981; }
+                    .status-badge.closed { background:rgba(239,68,68,0.1); color:#ef4444; border:1px solid #ef4444; }
+                 `}</style>
               </div>
             )}
 
@@ -351,6 +456,8 @@ export default function ValoTerminal() {
               <div className="page">
                  <div className="settings-nav">
                     <button onClick={()=>setSettingsTab('GENERAL')} className={settingsTab==='GENERAL'?'active':''}><Sliders size={18}/> GENEL</button>
+                    <button onClick={()=>setSettingsTab('USERS')} className={settingsTab==='USERS'?'active':''}><Users size={18}/> PERSONEL</button>
+                    <button onClick={()=>setSettingsTab('ALARMS')} className={settingsTab==='ALARMS'?'active':''}><BellRing size={18}/> ALARMLAR</button>
                     <button onClick={()=>setSettingsTab('PRINTER')} className={settingsTab==='PRINTER'?'active':''}><Printer size={18}/> YAZICI</button>
                     <button onClick={()=>setSettingsTab('RATES')} className={settingsTab==='RATES'?'active':''}><TrendingUp size={18}/> KUR & MAKAS</button>
                  </div>
@@ -361,6 +468,52 @@ export default function ValoTerminal() {
                        <div className="s-row"><label>TELEGRAM BOT TOKEN</label><input placeholder="..." /></div>
                        <div className="s-row"><label>MERKEZİ CHAT ID</label><input placeholder="..." /></div>
                        <button className="btn-save">DEĞİŞİKLİKLERİ KAYDET</button>
+                    </div>
+                 )}
+
+                 {settingsTab === 'USERS' && (
+                    <div className="settings-panel">
+                       <div style={{display:'flex', justifyContent:'space-between', marginBottom:'20px'}}>
+                          <h3><Users size={20}/> PERSONEL YÖNETİMİ</h3>
+                          <button className="btn-primary" style={{padding:'8px 16px', fontSize:'0.7rem'}}><UserPlus size={14}/> YENİ EKLE</button>
+                       </div>
+                       <div className="table-wrap">
+                          <table className="valo-table">
+                             <thead><tr><th>AD SOYAD</th><th>KULLANICI ADI</th><th>ROL</th><th>NFC</th><th>STATÜ</th></tr></thead>
+                             <tbody>
+                                {users.map(u => (
+                                   <tr key={u.id}>
+                                      <td style={{fontWeight:'bold'}}>{u.full_name}</td>
+                                      <td>{u.username}</td>
+                                      <td><span className="badge">{u.role}</span></td>
+                                      <td>{u.nfc_enabled ? 'EVET' : 'HAYIR'}</td>
+                                      <td><span className="status-ok">AKTİF</span></td>
+                                   </tr>
+                                ))}
+                             </tbody>
+                          </table>
+                       </div>
+                    </div>
+                 )}
+
+                 {settingsTab === 'ALARMS' && (
+                    <div className="settings-panel">
+                       <h3><BellRing size={20}/> AKTİF ALARMLAR</h3>
+                       <div className="table-wrap">
+                          <table className="valo-table">
+                             <thead><tr><th>TİP</th><th>EŞİK DEĞERİ</th><th>TELEGRAM</th><th>DURUM</th></tr></thead>
+                             <tbody>
+                                {alarms.map(a => (
+                                   <tr key={a.id}>
+                                      <td>{a.condition_type}</td>
+                                      <td>{a.threshold_val}</td>
+                                      <td>{a.telegram_enabled ? 'EVET' : 'HAYIR'}</td>
+                                      <td><span className="status-ok">ÇALIŞIYOR</span></td>
+                                   </tr>
+                                ))}
+                             </tbody>
+                          </table>
+                       </div>
                     </div>
                  )}
 
@@ -396,7 +549,21 @@ export default function ValoTerminal() {
       </div>
 
       {showDenomModal && (
-        <div className="modal-bg"><div className="modal" style={{maxWidth:'500px'}}><h2>KUPÜR GİRİŞİ</h2><p>Banknot dökümünü doğrulayın.</p><button className="btn-confirm" onClick={handleConfirm}>TAMAMLA VE YAZDIR</button></div></div>
+        <div className="modal-bg">
+          <div className="modal" style={{maxWidth:'500px', textAlign:'center'}}>
+            <Cpu size={48} color="#fbbf24" style={{marginBottom:'20px'}}/>
+            <h2>KUPÜR GİRİŞİ / SAYIM</h2>
+            <p style={{color:'#64748b'}}>Donanımdan gelen sayım verileri bekleniyor...</p>
+            
+            {/* Auto-fill simulation from HardwareContext if any message arrived */}
+            <div style={{padding:'20px', background:'rgba(255,255,255,0.05)', borderRadius:'12px', margin:'20px 0'}}>
+               <div style={{fontSize:'0.8rem', color:'#64748b'}}>SAYILAN TUTAR</div>
+               <div style={{fontSize:'2.5rem', fontWeight:'900', color:'#fbbf24'}}>{amount || '0.00'} {baseCurrency}</div>
+            </div>
+
+            <button className="btn-confirm" onClick={handleConfirm}>TAMAMLA VE YAZDIR (F10)</button>
+          </div>
+        </div>
       )}
 
       {showKYCModal && (
@@ -409,7 +576,29 @@ export default function ValoTerminal() {
             
             <div className="modal-grid">
                <div className="m-section">
-                  <div className="ocr-zone"><Camera size={32}/><br/>KİMLİK TARA (OCR)</div>
+                  <div className="ocr-zone" onClick={() => {
+                     const input = document.createElement('input');
+                     input.type = 'file';
+                     input.accept = 'image/*';
+                     input.onchange = async (e) => {
+                        const file = (e.target as any).files[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = async () => {
+                           const base64 = reader.result;
+                           const res = await authFetch('/api/ocr', { method:'POST', body: JSON.stringify({image: base64}) });
+                           if(res.ok) {
+                              const data = await res.json();
+                              const form = document.getElementById('kyc-form') as HTMLFormElement;
+                              (form.elements.namedItem('full_name') as HTMLInputElement).value = data.full_name;
+                              (form.elements.namedItem('identity_number') as HTMLInputElement).value = data.identity_number;
+                              alert("Kimlik verileri ayrıştırıldı.");
+                           }
+                        };
+                        reader.readAsDataURL(file);
+                     };
+                     input.click();
+                  }}><Camera size={32}/><br/>KİMLİK TARA (OCR)</div>
                   <div className="m-list">
                      {customers.map(c=>(
                         <div key={c.id} className="m-item" onClick={()=>{setSelectedCustomer(c); setShowKYCModal(false)}}>
@@ -422,12 +611,12 @@ export default function ValoTerminal() {
 
                <div className="m-section form-section">
                   <h3>HIZLI KAYIT</h3>
-                  <form onSubmit={async (e) => {
+                  <form id="kyc-form" onSubmit={async (e) => {
                      e.preventDefault();
                      const fd = new FormData(e.currentTarget);
                      const payload = Object.fromEntries(fd.entries());
-                     const res = await fetch('http://localhost:3030/customers', {
-                        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
+                     const res = await authFetch('/customers', {
+                        method:'POST', body:JSON.stringify(payload)
                      });
                      if(res.ok) { loadData(); alert("Müşteri Kaydedildi."); }
                   }}>
@@ -454,102 +643,103 @@ export default function ValoTerminal() {
         </div>
       )}
 
+      {showVaultModal && (
+        <div className="modal-bg">
+          <div className="modal" style={{maxWidth:'500px'}}>
+            <div style={{textAlign:'center', marginBottom:'30px'}}>
+              <Wallet size={64} color="#fbbf24" style={{marginBottom:'20px'}}/>
+              <h2>GÜNLÜK KASA AÇILIŞI</h2>
+              <p style={{color:'#64748b'}}>Güne başlamak için elinizdeki nakit mevcudunu doğrulayın.</p>
+            </div>
+            <div className="s-row"><label>TRY MEVCUT (ADET/TUTAR)</label><input type="number" defaultValue="0" id="open-try" style={{fontSize:'1.5rem'}} /></div>
+            <div className="s-row"><label>USD MEVCUT (ADET/TUTAR)</label><input type="number" defaultValue="0" id="open-usd" style={{fontSize:'1.5rem'}} /></div>
+            <button className="btn-confirm" style={{marginTop:'30px', borderRadius:'16px'}} onClick={async () => {
+                const payload = {
+                  opening_balances: {
+                    TRY: parseInt((document.getElementById('open-try') as HTMLInputElement).value) * 100,
+                    USD: parseInt((document.getElementById('open-usd') as HTMLInputElement).value) * 100
+                  }
+                };
+                const res = await authFetch('/vault/open', { method:'POST', body: JSON.stringify(payload) });
+                if(res.ok) { setShowVaultModal(false); checkVault(); loadData(); }
+            }}>KASAYI AÇ VE TERMİNALE BAĞLAN</button>
+          </div>
+        </div>
+      )}
+
       <style>{`
         * { box-sizing: border-box; }
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
         
         body { margin:0; background:#020617; color:white; font-family:'Inter', sans-serif; overflow:hidden; }
-        .app { height:100vh; display:flex; flex-direction:column; position:relative; }
+        .app { height:100vh; display:flex; flex-direction:column; position:relative; overflow:hidden; }
         
         /* HEADER */
-        .header { height:90px; border-bottom:1px solid rgba(255,255,255,0.05); background:rgba(15,23,42,0.8); backdrop-filter:blur(20px); display:flex; align-items:center; padding:0 32px; z-index:100; box-shadow: 0 4px 30px rgba(0,0,0,0.5); }
-        .logo { font-size:2.8rem; font-weight:900; color:#fbbf24; letter-spacing:6px; text-shadow:0 0 30px rgba(251,191,36,0.4); }
-        .weather { margin-left:20px; color:#64748b; font-size:0.75rem; font-weight:700; border-left:1px solid #334155; padding-left:20px; }
-        .weather strong { color:white; display:block; font-size:1rem; }
-        .h-center { flex:1; text-align:center; font-size:4.5rem; font-weight:900; color:#ef4444; font-family:monospace; letter-spacing:4px; text-shadow: 0 0 20px rgba(239,68,68,0.2); }
-        .h-right { display:flex; align-items:center; gap:24px; }
+        .header { height:70px; border-bottom:1px solid rgba(255,255,255,0.05); background:rgba(15,23,42,0.8); backdrop-filter:blur(20px); display:flex; align-items:center; padding:0 24px; z-index:100; flex-shrink:0; }
+        .logo { font-size:1.8rem; font-weight:900; color:#fbbf24; letter-spacing:3px; text-shadow:0 0 20px rgba(251,191,36,0.3); }
         
-        .nav { display:flex; gap:12px; }
-        .nav button { background:none; border:none; color:#94a3b8; font-weight:900; cursor:pointer; padding:12px 20px; border-radius:12px; font-size:0.85rem; letter-spacing:1px; transition:0.2s; }
-        .nav button.active { color:#fbbf24; background:rgba(251,191,36,0.1); box-shadow: inset 0 0 10px rgba(251,191,36,0.1); }
-        .u-box { text-align:right; border-right:1px solid #334155; padding-right:24px; line-height:1.2; }
-        .u-box strong { color:white; font-size:0.9rem; }
-        .u-box span { color:#64748b; font-size:0.7rem; font-weight:900; }
-        .btn-exit { padding:8px 16px; background:#1e293b; color:#94a3b8; border:1px solid #334155; border-radius:8px; font-weight:900; font-size:0.7rem; cursor:pointer; }
+        .h-center { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; font-size:2.2rem; font-weight:900; color:#ef4444; font-family:monospace; }
+        .weather-top { display:flex; align-items:center; gap:8px; font-size:0.65rem; color:#64748b; font-weight:900; font-family:'Inter', sans-serif; }
+        
+        .nav button { background:none; border:none; color:#94a3b8; font-weight:700; cursor:pointer; padding:8px 12px; border-radius:8px; font-size:0.75rem; transition:0.2s; }
+        .u-box { text-align:right; border-right:1px solid #334155; padding-right:16px; line-height:1.2; font-size:0.7rem; }
 
-        .body { flex:1; display:flex; overflow:hidden; z-index:10; }
+        .body { flex:1; display:flex; overflow:hidden; min-height:0; }
         
         /* SIDEBAR */
-        .sidebar { width:340px; border-right:1px solid rgba(255,255,255,0.05); background:rgba(15,23,42,0.4); padding:24px; overflow-y:auto; }
-        .kasa-box { background:rgba(2,6,23,0.6); border:1px solid #fbbf24; border-radius:20px; padding:24px; margin-bottom:32px; box-shadow: 0 0 40px rgba(251,191,36,0.05); }
-        .k-head { display:flex; align-items:center; gap:10px; color:#fbbf24; font-weight:900; font-size:0.8rem; letter-spacing:1.5px; margin-bottom:20px; }
-        .k-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid rgba(251,191,36,0.1); padding-bottom:12px; }
-        .k-row span { color:#94a3b8; font-weight:700; font-size:0.85rem; }
-        .k-row strong { color:white; font-size:1.2rem; font-family:monospace; }
+        .sidebar { width:280px; border-right:1px solid rgba(255,255,255,0.05); background:rgba(15,23,42,0.4); padding:16px; overflow-y:auto; flex-shrink:0; }
+        .kasa-box { background:rgba(2,6,23,0.6); border:1px solid #fbbf24; border-radius:12px; padding:16px; margin-bottom:20px; }
+        .k-head { display:flex; align-items:center; gap:8px; color:#fbbf24; font-weight:900; font-size:0.7rem; margin-bottom:12px; }
+        .k-row strong { color:white; font-size:1rem; font-family:monospace; }
         
-        .side-title { color:#64748b; font-weight:900; font-size:0.75rem; letter-spacing:2px; margin:40px 0 20px 0; display:flex; align-items:center; gap:10px; }
-        .rate-card { background:rgba(15,23,42,0.8); border:1px solid #334155; border-radius:16px; padding:18px; margin-bottom:16px; transition:0.3s; }
-        .rate-card:hover { border-color:#fbbf24; background:rgba(15,23,42,1); }
-        .r-head { display:flex; align-items:center; gap:8px; margin-bottom:15px; border-bottom:1px solid #1e293b; padding-bottom:10px; }
-        .r-head strong { flex:1; font-size:1.1rem; letter-spacing:1px; }
-        .r-vals { display:flex; justify-content:space-between; }
-        .r-vals .lbl { color:#64748b; font-size:0.6rem; font-weight:900; margin-bottom:4px; }
-        .r-vals .buy { color:white; font-size:1.3rem; font-weight:900; font-family:monospace; }
-        .r-vals .sell { color:white; font-size:1.3rem; font-weight:900; font-family:monospace; text-align:right; }
+        .rate-card { background:rgba(15,23,42,0.8); border:1px solid #334155; border-radius:10px; padding:10px; margin-bottom:10px; }
+        .r-head { display:flex; align-items:center; gap:6px; margin-bottom:6px; font-size:0.75rem; }
+        .r-vals .buy, .r-vals .sell { color:white; font-size:0.95rem; font-weight:700; }
 
         /* CONTENT */
-        .content { flex:1; padding:48px; overflow-y:auto; position:relative; }
+        .content { flex:1; padding:24px; overflow-y:auto; background: radial-gradient(circle at top right, rgba(251,191,36,0.02), transparent 40%); min-height: 100%; }
         
         /* EXCHANGE VIEW */
-        .ex-wrap { max-width:800px; margin:0 auto; }
-        .kyc-btn { width:100%; padding:24px; background:rgba(15,23,42,0.8); border:1px dashed #334155; border-radius:20px; color:#94a3b8; font-weight:900; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:24px; transition:0.2s; }
-        .kyc-btn.ok { border-color:#10b981; color:#10b981; background:rgba(16,185,129,0.05); }
-        .ex-card { background:rgba(15,23,42,0.9); border-radius:40px; border:1px solid #334155; overflow:hidden; box-shadow: 0 40px 100px rgba(0,0,0,0.6); }
-        .ex-card.risk { border:4px solid #f43f5e; box-shadow: 0 0 80px rgba(244,63,94,0.3); }
-        .risk-banner { background:#f43f5e; color:white; padding:20px; text-align:center; font-weight:900; letter-spacing:1px; }
-        .ex-in { padding:60px; border-bottom:1px solid #1e293b; }
-        .ex-in label { display:block; color:#64748b; font-weight:900; font-size:0.85rem; margin-bottom:20px; letter-spacing:2px; }
-        .ex-row { display:flex; align-items:center; gap:32px; }
-        .ex-row select { background:#0f172a; color:white; border:2px solid #334155; padding:12px; border-radius:12px; font-weight:900; font-size:1.2rem; cursor:pointer; }
-        .ex-row input { flex:1; background:none; border:none; border-bottom:6px solid #fbbf24; color:#fbbf24; font-size:7rem; font-weight:900; text-align:right; outline:none; font-family:monospace; }
-        .res-val { flex:1; font-size:7rem; font-weight:900; color:#10b981; text-align:right; font-family:monospace; text-shadow: 0 0 30px rgba(16,185,129,0.2); }
-        .btn-confirm { width:100%; padding:40px; background:#fbbf24; color:black; font-weight:900; font-size:2.4rem; border:none; cursor:pointer; transition:0.2s; }
-        .btn-confirm:hover { background:#fcd34d; transform: scale(1.02); }
+        .ex-wrap { max-width:700px; margin:0 auto; padding-bottom:50px; }
+        .ex-in { padding:30px; border-bottom:1px solid #1e293b; }
+        .ex-row input { flex:1; background:none; border:none; border-bottom:4px solid #fbbf24; color:#fbbf24; font-size:4rem; font-weight:900; text-align:right; outline:none; font-family:monospace; }
+        .res-val { flex:1; font-size:4rem; font-weight:900; color:#10b981; text-align:right; font-family:monospace; }
+        .btn-confirm { width:100%; padding:24px; background:#fbbf24; color:black; font-weight:900; font-size:1.5rem; border:none; cursor:pointer; }
 
         /* DATA PAGES */
-        .page { animation: fadeIn 0.3s ease; }
-        .page-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:40px; }
-        .page-header h2 { margin:0; font-size:2.5rem; font-weight:900; letter-spacing:2px; display:flex; align-items:center; gap:20px; color:#fbbf24; }
-        .page-actions { display:flex; gap:16px; }
-        .btn-primary { padding:14px 28px; background:#fbbf24; color:black; border:none; border-radius:12px; font-weight:900; cursor:pointer; display:flex; align-items:center; gap:10px; }
-        .btn-secondary { padding:14px 28px; background:#1e293b; color:white; border:1px solid #334155; border-radius:12px; font-weight:900; cursor:pointer; display:flex; align-items:center; gap:10px; }
+        .page-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:32px; }
+        .page-header h2 { margin:0; font-size:2rem; font-weight:900; color:#fbbf24; display:flex; align-items:center; gap:16px; }
         
-        .table-wrap { background:rgba(15,23,42,0.8); border:1px solid #334155; border-radius:24px; overflow:hidden; }
-        .valo-table { width:100%; border-collapse:collapse; text-align:left; }
-        .valo-table th { padding:24px; background:rgba(2,6,23,0.5); color:#64748b; font-weight:900; font-size:0.75rem; letter-spacing:2px; text-transform:uppercase; border-bottom:2px solid #1e293b; }
-        .valo-table td { padding:24px; border-bottom:1px solid rgba(255,255,255,0.05); font-size:0.95rem; }
-        .valo-table tr:hover { background:rgba(255,255,255,0.02); }
+        .settings-nav { display:flex; gap:6px; margin-bottom:24px; border-bottom:1px solid #1e293b; padding-bottom:12px; }
+        .settings-nav button { padding:10px 20px; background:none; border:none; color:#64748b; cursor:pointer; font-weight:900; font-size:0.75rem; display:flex; align-items:center; gap:8px; }
+        .settings-nav button.active { color:#fbbf24; border-bottom:2px solid #fbbf24; }
         
-        .badge { padding:6px 12px; border-radius:6px; font-weight:900; font-size:0.7rem; }
-        .badge.EXCHANGE { background:rgba(251,191,36,0.1); color:#fbbf24; border:1px solid #fbbf24; }
-        .status-ok { color:#10b981; font-weight:900; font-size:0.8rem; display:flex; align-items:center; gap:6px; }
-        .status-ok::before { content:''; width:8px; height:8px; background:#10b981; border-radius:50%; box-shadow:0 0 10px #10b981; }
+        .settings-panel { background:rgba(15,23,42,0.8); padding:32px; border-radius:24px; border:1px solid #334155; margin-bottom:24px; }
+        .settings-panel h3 { margin:0 0 24px 0; font-size:1.1rem; color:#fbbf24; }
+        .s-row { margin-bottom:20px; display:flex; flex-direction:column; gap:8px; }
+        .s-row label { color:#64748b; font-weight:900; font-size:0.7rem; }
+        .s-row input, .s-row select { padding:12px; background:#020617; border:1px solid #334155; color:white; border-radius:10px; font-weight:700; }
+        .btn-save { padding:12px 24px; background:#10b981; color:black; font-weight:900; border:none; border-radius:10px; cursor:pointer; font-size:0.8rem; }
         
-        /* SETTINGS GRID */
-        .s-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:24px; margin-bottom:32px; }
-        .s-hr { border:none; border-top:1px solid #1e293b; margin:40px 0; }
-        .settings-panel h4 { margin:0 0 24px 0; color:#fbbf24; font-size:1.2rem; }
+        .table-wrap { background:rgba(2,6,23,0.5); border:1px solid #1e293b; border-radius:16px; overflow:hidden; }
+        .valo-table { width:100%; border-collapse:collapse; text-align:left; font-size:0.85rem; }
+        .valo-table th { padding:16px; color:#475569; font-weight:900; border-bottom:1px solid #1e293b; text-transform:uppercase; font-size:0.7rem; }
+        .valo-table td { padding:16px; border-bottom:1px solid rgba(255,255,255,0.02); }
+        
+        .badge { padding:4px 8px; background:rgba(255,255,255,0.05); border-radius:4px; font-size:0.65rem; font-weight:900; }
+        .status-ok { color:#10b981; font-weight:900; display:flex; align-items:center; gap:6px; font-size:0.75rem; }
+        .status-ok::before { content:''; width:6px; height:6px; background:#10b981; border-radius:50%; box-shadow:0 0 10px #10b981; }
 
-        @keyframes fadeIn { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: translateY(0); } }
+        .modal-bg { position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(2,6,23,0.9); z-index:2000; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(10px); }
+        .modal { background:#0f172a; width:90%; max-width:800px; padding:40px; border-radius:32px; border:1px solid #334155; max-height:90vh; overflow-y:auto; }
 
         @media print {
-           .header, .sidebar, .nav, .page-actions, .btn-confirm { display:none !important; }
-           .app { background:white !important; color:black !important; }
-           .content { padding:0 !important; }
-           .table-wrap { border:none !important; background:white !important; }
-           .valo-table th { color:black !important; border-bottom:2px solid black !important; }
-           .valo-table td { color:black !important; border-bottom:1px solid #ccc !important; }
-           .logo { color:black !important; text-shadow:none !important; }
+           .header, .sidebar, .nav, .page-header button, .btn-confirm, .settings-nav { display:none !important; }
+           body { background:white; color:black; overflow:visible; }
+           .app { height:auto; overflow:visible; }
+           .content { padding:0; overflow:visible; }
+           .table-wrap { border:1px solid #eee; background:white; }
+           .valo-table td, .valo-table th { color:black; border-bottom:1px solid #eee; }
         }
       `}</style>
     </div>
