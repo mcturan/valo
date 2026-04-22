@@ -22,8 +22,26 @@ const INITIAL_RATES: Rate[] = [
   { pair: 'XAU/TRY', baseFlag: '🪙', targetFlag: '🇹🇷', buy: 2350000, sell: 2380000, flash: 'none' },
 ];
 
+const API_BASE = 'http://localhost:3030';
+
 export default function ValoTerminal() {
   const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+
+  // Helper for authorized fetch
+  const authFetch = async (url: string, options: any = {}) => {
+    const t = token || localStorage.getItem('valo_token');
+    const headers = {
+      ...options.headers,
+      'Authorization': `Bearer ${t}`,
+      'Content-Type': 'application/json'
+    };
+    const res = await fetch(`${API_BASE}${url}`, { ...options, headers });
+    if (res.status === 401 || res.status === 403) {
+       setUser(null); setToken(null); localStorage.removeItem('valo_token');
+    }
+    return res;
+  };
   const [view, setView] = useState<'EXCHANGE'|'REPORTS'|'CUSTOMERS'|'SETTINGS'|'CUSTOMER_DETAIL'>('EXCHANGE');
   const [settingsTab, setSettingsTab] = useState<'GENERAL'|'PRINTER'|'RATES'>('GENERAL');
   
@@ -47,7 +65,15 @@ export default function ValoTerminal() {
 
   useEffect(() => {
     const t = setInterval(() => setTime(new Date().toLocaleTimeString('tr-TR')), 1000);
-    fetch('http://localhost:3030/system/weather').then(r => r.json()).then(setWeather).catch(() => {});
+    fetch(`${API_BASE}/system/weather`).then(r => r.json()).then(setWeather).catch(() => {});
+    
+    // Auto-login
+    const savedToken = localStorage.getItem('valo_token');
+    const savedUser = localStorage.getItem('valo_user');
+    if (savedToken && savedUser) {
+       setToken(savedToken);
+       setUser(JSON.parse(savedUser));
+    }
     return () => clearInterval(t);
   }, []);
 
@@ -71,9 +97,7 @@ export default function ValoTerminal() {
     if (!user) return;
     
     const payload = {
-      user_id: user.id,
       customer_id: selectedCustomer?.id || null,
-      type: `${baseCurrency}_TO_${targetCurrency}`,
       debit_amount: Math.round(Number(amount) * 100),
       currency: baseCurrency,
       credit_amount: Math.round(getRawResult() * 100),
@@ -81,8 +105,8 @@ export default function ValoTerminal() {
     };
 
     try {
-      const res = await fetch('http://localhost:3030/transactions', {
-        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+      const res = await authFetch('/transactions', {
+        method: 'POST', body: JSON.stringify(payload)
       });
       if(res.ok) {
          alert("İŞLEM KAYDEDİLDİ. FİŞ YAZDIRILIYOR...");
@@ -97,29 +121,34 @@ export default function ValoTerminal() {
 
   const loadData = async () => {
     if (!user) return;
-    const [c, t, b, r] = await Promise.all([
-      fetch('http://localhost:3030/customers').then(r => r.json()),
-      fetch('http://localhost:3030/transactions').then(r => r.json()),
-      fetch('http://localhost:3030/system/balances').then(r => r.json()),
-      fetch('http://localhost:3030/rates').then(r => r.json())
-    ]);
-    setCustomers(c); setTransactions(t); setBalances(b);
-    
-    // Update liveRates with backend data
-    if (r.length > 0) {
-      const updatedRates = INITIAL_RATES.map(base => {
-        const match = r.find((db: any) => `${db.base_currency}/${db.target_currency}` === base.pair);
-        if (match) {
-          return {
-            ...base,
-            buy: match.rate_multiplier,
-            sell: match.rate_multiplier + rateSpread
-          };
-        }
-        return base;
-      });
-      setLiveRates(updatedRates);
-    }
+    try {
+      const [cRes, tRes, bRes, rRes] = await Promise.all([
+        authFetch('/customers'),
+        authFetch('/transactions'),
+        authFetch('/system/balances'),
+        authFetch('/rates')
+      ]);
+      
+      const c = await cRes.json();
+      const t = await tRes.json();
+      const b = await bRes.json();
+      const r = await rRes.json();
+
+      setCustomers(Array.isArray(c) ? c : []); 
+      setTransactions(Array.isArray(t) ? t : []); 
+      setBalances(Array.isArray(b) ? b : []);
+      
+      if (Array.isArray(r) && r.length > 0) {
+        const updatedRates = INITIAL_RATES.map(base => {
+          const match = r.find((db: any) => `${db.base_currency}/${db.target_currency}` === base.pair);
+          if (match) {
+            return { ...base, buy: match.rate_multiplier, sell: match.rate_multiplier + rateSpread };
+          }
+          return base;
+        });
+        setLiveRates(updatedRates);
+      }
+    } catch (e) { console.error("Data load failed", e); }
   };
 
   useEffect(() => { loadData(); }, [user, view]);
@@ -136,11 +165,17 @@ export default function ValoTerminal() {
          <NetworkBackground />
          <form className="login-box" onSubmit={async (e) => {
             e.preventDefault();
-            const res = await fetch('http://localhost:3030/login', {
+            const res = await fetch(`${API_BASE}/login`, {
                method:'POST', headers:{'Content-Type':'application/json'},
                body: JSON.stringify({username: e.currentTarget.username.value, password: e.currentTarget.password.value})
             });
-            if(res.ok) setUser(await res.json()); else alert('Yetkisiz Giriş!');
+            if(res.ok) {
+               const data = await res.json();
+               setToken(data.token);
+               setUser(data.user);
+               localStorage.setItem('valo_token', data.token);
+               localStorage.setItem('valo_user', JSON.stringify(data.user));
+            } else alert('Yetkisiz Giriş!');
          }}>
             <h1>VALO</h1>
             <p>COMMAND_CENTER_AUTH</p>

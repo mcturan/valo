@@ -4,32 +4,39 @@ export interface LedgerEntry {
   account_id: string;
   entry_type: 'DEBIT' | 'CREDIT';
   amount: number; // Integer (kuruş/cent)
+  currency_code: string;
 }
 
 export interface TransactionData {
   user_id: string;
+  customer_id?: string;
   type: 'EXCHANGE' | 'DEPOSIT' | 'WITHDRAWAL' | 'TRANSFER';
   auth_used: 'NFC_STANDARD' | 'PASSWORD_OVERRIDE' | 'ADMIN_OVERRIDE';
-  customer_identity_hash?: string;
   applied_exchange_rate_id?: string;
+  banknote_serials?: any;
   entries: LedgerEntry[];
 }
 
 export async function createFinancialTransaction(data: TransactionData) {
-  const { user_id, type, auth_used, customer_identity_hash, applied_exchange_rate_id, entries } = data;
+  const { user_id, customer_id, type, auth_used, applied_exchange_rate_id, banknote_serials, entries } = data;
 
-  // 1. Double-Entry Validation
-  let totalBalance = 0;
+  // 1. Multi-Currency Double-Entry Validation
+  // Every currency involved in the transaction MUST balance to zero.
+  const currencyBalances: { [key: string]: number } = {};
+  
   for (const entry of entries) {
+    const balance = currencyBalances[entry.currency_code] || 0;
     if (entry.entry_type === 'DEBIT') {
-      totalBalance += entry.amount;
+      currencyBalances[entry.currency_code] = balance + entry.amount;
     } else {
-      totalBalance -= entry.amount;
+      currencyBalances[entry.currency_code] = balance - entry.amount;
     }
   }
 
-  if (totalBalance !== 0) {
-    throw new Error('Double-entry violation: Total DEBIT must equal total CREDIT.');
+  for (const [currency, balance] of Object.entries(currencyBalances)) {
+    if (balance !== 0) {
+      throw new Error(`Double-entry violation in ${currency}: Balance must be 0, but is ${balance}.`);
+    }
   }
 
   const client = await pool.connect();
@@ -38,10 +45,10 @@ export async function createFinancialTransaction(data: TransactionData) {
 
     // 2. Create Transaction Header
     const txResult = await client.query(
-      `INSERT INTO transactions (user_id, type, status, auth_used, customer_identity_hash, applied_exchange_rate_id)
-       VALUES ($1, $2, 'COMPLETED', $3, $4, $5)
+      `INSERT INTO transactions (user_id, customer_id, type, status, auth_used, applied_exchange_rate_id, banknote_serials)
+       VALUES ($1, $2, $3, 'COMPLETED', $4, $5, $6)
        RETURNING id`,
-      [user_id, type, auth_used, customer_identity_hash, applied_exchange_rate_id]
+      [user_id, customer_id, type, auth_used, applied_exchange_rate_id, banknote_serials]
     );
 
     const transactionId = txResult.rows[0].id;
@@ -49,9 +56,9 @@ export async function createFinancialTransaction(data: TransactionData) {
     // 3. Create Ledger Entries
     for (const entry of entries) {
       await client.query(
-        `INSERT INTO ledger_entries (transaction_id, account_id, entry_type, amount)
-         VALUES ($1, $2, $3, $4)`,
-        [transactionId, entry.account_id, entry.entry_type, entry.amount]
+        `INSERT INTO ledger_entries (transaction_id, account_id, entry_type, amount, currency_code)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [transactionId, entry.account_id, entry.entry_type, entry.amount, entry.currency_code]
       );
     }
 
