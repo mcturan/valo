@@ -1,0 +1,3 @@
+0000000000000000000000000000000000000000 fca0c73d6312cc3ef824d4e43e2d1e0d4ef20246 mcturan <mcturan@users.noreply.github.com> 1776802206 +0300	commit (initial): Initial commit from Create Next App
+fca0c73d6312cc3ef824d4e43e2d1e0d4ef20246 09f120d7e9655165966a49465bcce3404ce2f021 mcturan <mcturan@users.noreply.github.com> 1776819783 +0300	commit: feat: VALO Terminal - Ledger Persistence, Real-time Balances, and Core Fixes
+09f120d7e9655165966a49465bcce3404ce2f021 9485f42d3ea19e3d784d54b4e5b58691883f43bc mcturan <mcturan@users.noreply.github.com> 1776819942 +0300	commit: feat: complete VALO Terminal Phase 2 - UI Overhaul, Reports, PDF Export & Network Printer
