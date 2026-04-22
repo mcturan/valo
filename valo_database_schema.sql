@@ -68,7 +68,7 @@ CREATE TABLE exchange_rates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     base_currency VARCHAR(3) NOT NULL,
     target_currency VARCHAR(3) NOT NULL,
-    rate_multiplier INTEGER NOT NULL,
+    rate_multiplier BIGINT NOT NULL,
     source rate_source NOT NULL DEFAULT 'MANUAL',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -94,7 +94,7 @@ CREATE TABLE ledger_entries (
     transaction_id UUID REFERENCES transactions(id) NOT NULL,
     account_id UUID REFERENCES accounts(id) NOT NULL,
     entry_type entry_type NOT NULL,
-    amount INTEGER NOT NULL CHECK (amount > 0), 
+    amount BIGINT NOT NULL CHECK (amount > 0), 
     currency_code VARCHAR(3) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -132,3 +132,4 @@ FOR EACH ROW EXECUTE FUNCTION prevent_modification();
 CREATE TRIGGER enforce_worm_ledger
 BEFORE UPDATE OR DELETE ON ledger_entries
 FOR EACH ROW EXECUTE FUNCTION prevent_modification();
+CREATE TABLE audit_logs (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID REFERENCES users(id), action VARCHAR(255) NOT NULL, details JSONB, ip_address VARCHAR(45), created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);

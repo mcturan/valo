@@ -1,0 +1,12 @@
+import { Router } from 'express';
+import { getSettings, postSettings, getRates, getWeather, getBalances, getUsers, getAlarms } from '../controllers/systemController.js';
+import { authenticateToken, authorizeRole } from '../middleware/auth.js';
+const router = Router();
+router.get('/settings', authenticateToken, getSettings);
+router.post('/settings', authenticateToken, authorizeRole(['MASTER_ADMIN']), postSettings);
+router.get('/rates', authenticateToken, getRates);
+router.get('/weather', getWeather);
+router.get('/balances', authenticateToken, getBalances);
+router.get('/users', authenticateToken, authorizeRole(['MASTER_ADMIN', 'ADMIN']), getUsers);
+router.get('/alarms', authenticateToken, authorizeRole(['MASTER_ADMIN', 'ADMIN']), getAlarms);
+export default router;

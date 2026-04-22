@@ -10,7 +10,7 @@ export interface LedgerEntry {
 export interface TransactionData {
   user_id: string;
   customer_id?: string;
-  type: 'EXCHANGE' | 'DEPOSIT' | 'WITHDRAWAL' | 'TRANSFER';
+  type: 'EXCHANGE' | 'DEPOSIT' | 'WITHDRAWAL' | 'TRANSFER' | 'VAULT_TRANSFER';
   auth_used: 'NFC_STANDARD' | 'PASSWORD_OVERRIDE' | 'ADMIN_OVERRIDE';
   applied_exchange_rate_id?: string;
   banknote_serials?: any;
@@ -43,8 +43,11 @@ export async function createFinancialTransaction(data: TransactionData) {
   try {
     await client.query('BEGIN');
 
-    // 1. Balance Check for PERSONAL accounts
+    // 1. Lock accounts and Check Balance for PERSONAL accounts
     for (const entry of entries) {
+      // Lock the account row to prevent concurrent modifications
+      await client.query('SELECT id FROM accounts WHERE id = $1 FOR UPDATE', [entry.account_id]);
+
       if (entry.entry_type === 'DEBIT') {
         const accRes = await client.query('SELECT account_type FROM accounts WHERE id = $1', [entry.account_id]);
         if (accRes.rows[0]?.account_type === 'PERSONAL') {

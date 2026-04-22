@@ -3,16 +3,16 @@
 TRUNCATE users, accounts, customers, system_settings CASCADE;
 
 INSERT INTO users (full_name, username, password_hash, role) VALUES 
-('Sistem Yaratıcısı', 'godmin', '$2b$10$0eLQU0Ppd6Mp11gjE8YL..kW3fwwpBj4vvbEs0rGyFOojaQ5SIPTC', 'MASTER_ADMIN'),
-('Ahmet Yılmaz', 'yilmaz.ahmet', '$2b$10$0eLQU0Ppd6Mp11gjE8YL..kW3fwwpBj4vvbEs0rGyFOojaQ5SIPTC', 'ADMIN'),
-('Zeynep Kaya', 'kaya.zeynep', '$2b$10$0eLQU0Ppd6Mp11gjE8YL..kW3fwwpBj4vvbEs0rGyFOojaQ5SIPTC', 'ADMIN'),
-('Şule Çelik', 'celik.sule', '$2b$10$0eLQU0Ppd6Mp11gjE8YL..kW3fwwpBj4vvbEs0rGyFOojaQ5SIPTC', 'USER');
+('Sistem Yaratıcısı', 'godmin', '$2b$10$ifJPquhniPoqKXgUKcvK5.TF4LrwtNApqB3LlIRTrw7NMU6Lhuh.i', 'MASTER_ADMIN'),
+('Ahmet Yılmaz', 'yilmaz.ahmet', '$2b$10$ifJPquhniPoqKXgUKcvK5.TF4LrwtNApqB3LlIRTrw7NMU6Lhuh.i', 'ADMIN'),
+('Zeynep Kaya', 'kaya.zeynep', '$2b$10$ifJPquhniPoqKXgUKcvK5.TF4LrwtNApqB3LlIRTrw7NMU6Lhuh.i', 'ADMIN'),
+('Şule Çelik', 'celik.sule', '$2b$10$ifJPquhniPoqKXgUKcvK5.TF4LrwtNApqB3LlIRTrw7NMU6Lhuh.i', 'USER');
 
-INSERT INTO accounts (account_name, currency_code) VALUES 
-('Merkez Kasa TRY', 'TRY'),
-('Merkez Kasa USD', 'USD'),
-('Merkez Kasa EUR', 'EUR'),
-('Merkez Kasa GBP', 'GBP');
+INSERT INTO accounts (account_name, currency_code, account_type) VALUES 
+('Merkez Kasa TRY', 'TRY', 'MASTER'),
+('Merkez Kasa USD', 'USD', 'MASTER'),
+('Merkez Kasa EUR', 'EUR', 'MASTER'),
+('Merkez Kasa GBP', 'GBP', 'MASTER');
 
 INSERT INTO customers (full_name, identity_number, phone, country) VALUES 
 ('Hüseyin Al-Fayed', '99887766554', '+905321112233', 'Türkiye'),
@@ -29,3 +29,9 @@ INSERT INTO exchange_rates (base_currency, target_currency, rate_multiplier) VAL
 ('EUR', 'TRY', 345000),
 ('GBP', 'TRY', 402000);
 
+INSERT INTO accounts (account_name, currency_code, account_type) VALUES
+('EXCHANGE_CLEARING_TRY', 'TRY', 'CLEARING'),
+('EXCHANGE_CLEARING_USD', 'USD', 'CLEARING'),
+('EXCHANGE_CLEARING_EUR', 'EUR', 'CLEARING'),
+('EXCHANGE_CLEARING_GBP', 'GBP', 'CLEARING')
+ON CONFLICT DO NOTHING;

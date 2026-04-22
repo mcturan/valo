@@ -21,7 +21,8 @@ export const HardwareProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    const socket = new WebSocket('ws://localhost:8080');
+    const socketUrl = process.env.NEXT_PUBLIC_VALO_HARDWARE_WS || 'ws://localhost:8080?token=valo-hardware-token-2024';
+    const socket = new WebSocket(socketUrl);
 
     socket.onopen = () => {
       console.log('UI: Connected to Hardware Daemon');

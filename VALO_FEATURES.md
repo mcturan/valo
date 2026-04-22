@@ -18,6 +18,20 @@
 ## 🟡 ŞİMDİ YAPILIYOR (GAZA BASILDI - PROFESYONEL AUDIT)
 - [ ] **Mobile Optimization:** Tablet/Mobil görünümlerin iyileştirilmesi.
 
-## 🔴 SON FAZ (FINALE)
-- [ ] **AI Smurfing Detection:** Ollama ile derin risk analizi.
-- [ ] **Cloud Sync:** TINC şifreli yedekleme.
+## 🔴 ACİL YAPISAL REFAKTÖR (DENETİM SONRASI)
+- [ ] **Decoupling index.ts:** "God File" yapısının Routes, Controllers ve Services olarak parçalanması.
+- [ ] **Data Integrity Fix:** DB'deki `INTEGER` alanların `BIGINT`'e taşınması (Taşma riskine karşı).
+- [ ] **Race Condition Patch:** `EXCHANGE_CLEARING` hesabının uygulama yerine DB katmanında (Seed/SQL) oluşturulması.
+- [ ] **Security Hardening:** Koda gömülü JWT secret'ların kaldırılması ve gerçek `.env` yönetimi.
+- [ ] **Middleware Enforcement:** Atıl durumdaki `validate` middleware'lerinin tüm finansal rotalara zorunlu kılınması.
+
+## 🟡 PHASE 2: GERÇEK ENTEGRASYON (İLLÜZYONDAN GERÇEĞE)
+- [ ] **Real Hardware Daemon:** Mock veriden kurtulup `serialport` ile fiziksel cihaz iletişimine geçiş.
+- [ ] **True AI Risk Motor:** Basit `if` blokları yerine yerel Ollama/Llama3 modeline gerçek prompt akışı.
+- [ ] **Full Sync Logic:** Simulation yerine TINC API ile hata toleranslı (Retries) senkronizasyon.
+- [ ] **Vault Closure Logic:** `vault_sessions` tablosunu kapatan ve mutabakat sağlayan gerçek fonksiyonlar.
+
+## 🟢 PHASE 3: PROFESYONEL ÇIKTI VE LOGLAMA
+- [ ] **Thermal Printer Service:** Tarayıcıdan yazdırma yerine doğrudan TCP/IP üzerinden termal fiş basımı.
+- [ ] **Advanced Audit Log:** Her işlemin detaylı JSON logunun (IP, User Agent, Time) tutulması.
+- [ ] **Multi-Currency UI Fix:** Açılış ve transfer ekranlarının 4 ana birimi de (TRY, USD, EUR, GBP) desteklemesi.
